@@ -220,7 +220,6 @@ LinkedList parseInputs(json instrs) {
         nodeMap};
 }
 
-// TODO make a better version of this and add visualization
 void printLinkedList(LinkedList ll) {
     std::map<OpType, std::string> opNames = {
         {OpType::Const, "Const"},

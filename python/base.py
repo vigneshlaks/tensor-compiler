@@ -1,4 +1,3 @@
-import sys
 from dataclasses import dataclass
 from typing import Optional, Callable
 from contextlib import contextmanager
@@ -35,8 +34,6 @@ def callback_from_stance():
         return None
     elif _stance.stance == "default":
         return _stance.backend
-
-# --- Guards ---
 
 # guards.py:1895
 def type_guard(x):
@@ -96,8 +93,10 @@ _trace: list = []
 class SymTensor:
     _counter = 0
 
-    def __init__(self, dim: list, id: str = None):
+    def __init__(self, dim: list, id: str = None, trainable: bool = False, init: str = None):
         self.dim = dim
+        self.trainable = trainable
+        self.init = init
         if id is None:
             SymTensor._counter += 1
             self.id = f"t{SymTensor._counter}"
@@ -123,13 +122,22 @@ def sym_softmax(x: SymTensor) -> SymTensor:
     _trace.append({"id": out.id, "op": "softmax", "args": [x.id]})
     return out
 
+def sym_cross_entropy(x: SymTensor, num_classes: int) -> SymTensor:
+    out = SymTensor([1])
+    _trace.append({"id": out.id, "op": "cross_entropy", "args": [x.id], "dim": [1, num_classes]})
+    return out
+
 def trace(fn, *sym_args) -> list:
-    # Update the global trace
     global _trace
     SymTensor._counter = 0
     _trace = []
     for arg in sym_args:
-        _trace.append({"id": arg.id, "op": "const", "dim": arg.dim})
+        node = {"id": arg.id, "op": "const", "dim": arg.dim}
+        if arg.trainable:
+            node["trainable"] = True
+        if arg.init:
+            node["init"] = arg.init
+        _trace.append(node)
     fn(*sym_args)
     return list(_trace)
 
@@ -179,16 +187,32 @@ def my_func(x):
     return x * 2
 
 import json
+import tensor_frontend
 
-def two_layer_net(x, w1, w2):
+# Define your network in Python
+def mnist_net(x, w1, w2):
     h = sym_relu(x @ w1)
-    out = h @ w2
-    return out
+    logits = h @ w2
+    probs = sym_softmax(logits)
+    sym_cross_entropy(probs, 10)
 
-x  = SymTensor([32, 512], id="x")
-w1 = SymTensor([512, 256], id="w1")
-w2 = SymTensor([256, 10],  id="w2")
+x  = SymTensor([1, 784],   id="x")
+w1 = SymTensor([784, 128], id="w1", trainable=True, init="xavier")
+w2 = SymTensor([128, 10],  id="w2", trainable=True, init="xavier")
 
-ir = trace(two_layer_net, x, w1, w2)
+ir = trace(mnist_net, x, w1, w2)
 print("=== traced IR ===")
 print(json.dumps(ir, indent=2))
+
+# Compile: FusionPass runs, matmul+relu → matmul_relu
+model = tensor_frontend.compile(ir)
+model.print_graph()
+
+# Train on MNIST
+losses = model.train(
+    img_path="../data/MNIST/raw/train-images-idx3-ubyte",
+    lbl_path="../data/MNIST/raw/train-labels-idx1-ubyte",
+    lr=0.01,
+    epochs=3,
+    n_samples=1000
+)

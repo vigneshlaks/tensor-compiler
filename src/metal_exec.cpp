@@ -1,15 +1,3 @@
-// Metal backend implementation — analogous to gpu_exec.cu but for M1.
-//
-// Key design:
-//   - A lazy singleton MetalContext holds the MTL::Device, CommandQueue,
-//     compiled shader Library, and one ComputePipelineState per kernel.
-//   - metalMalloc allocates a ResourceStorageModeShared MTL::Buffer and
-//     stores the mapping  float* (contents ptr) → MTL::Buffer*  in g_bufferMap.
-//     Because M1 uses unified memory, the float* is CPU-readable/writable
-//     directly, so metalCopyToDevice/ToHost are plain memcpys.
-//   - All public functions accept the same float* signatures as gpu_exec so
-//     ops.cpp and types.cpp only need a thin #ifdef METAL_FOUND branch.
-
 #define NS_PRIVATE_IMPLEMENTATION
 #define MTL_PRIVATE_IMPLEMENTATION
 #include <Metal/Metal.hpp>
